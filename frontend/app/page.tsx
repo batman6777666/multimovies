@@ -2,6 +2,8 @@
 
 import { useState } from 'react';
 
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:4000';
+
 interface PatternResults {
   rpm: string | null;
   p2p: string | null;
@@ -45,7 +47,7 @@ export default function Home() {
     }, 3000);
 
     try {
-      const response = await fetch('/api/inspect', {
+      const response = await fetch(`${BACKEND_URL}/api/inspect`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url: url.trim() }),
