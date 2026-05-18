@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>API Documentation — Video Embed Link Extractor</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #000000;
+      --surface:   rgba(15, 23, 42, 0.8);
+      --border:    rgba(99, 102, 241, 0.18);
+      --border-h:  rgba(99, 102, 241, 0.45);
+      --accent:    #6366f1;
+      --accent2:   #8b5cf6;
+      --text:      #e2e8f0;
+      --muted:     #64748b;
+      --green:     #22c55e;
+      --red:       #ef4444;
+      --yellow:    #f59e0b;
+      --radius:    14px;
+      --code-bg:   rgba(2, 6, 23, 0.8);
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background:
+        radial-gradient(ellipse 700px 500px at 15% 10%, rgba(99,102,241,0.13), transparent),
+        radial-gradient(ellipse 500px 400px at 85% 85%, rgba(139,92,246,0.1), transparent);
+      z-index: 0;
+    }
+
+    .page { position: relative; z-index: 1; max-width: 860px; margin: 0 auto; padding: 56px 20px 80px; }
+
+    .header { text-align: center; margin-bottom: 48px; }
+    .badge {
+      display: inline-block;
+      background: rgba(99,102,241,0.15);
+      border: 1px solid rgba(99,102,241,0.3);
+      color: #818cf8;
+      font-size: 0.72rem;
+      font-weight: 600;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      padding: 5px 14px;
+      border-radius: 20px;
+      margin-bottom: 18px;
+    }
+    h1 {
+      font-size: clamp(1.8rem, 5vw, 2.8rem);
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      background: linear-gradient(135deg, #818cf8, #6366f1, #a78bfa, #c084fc);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      line-height: 1.1;
+      margin-bottom: 10px;
+    }
+    .subtitle { color: var(--muted); font-size: 1rem; }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 28px;
+      backdrop-filter: blur(20px);
+      margin-bottom: 20px;
+    }
+    .card-title {
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--muted);
+      margin-bottom: 18px;
+    }
+    h2 {
+      font-size: 1.3rem;
+      font-weight: 700;
+      margin-bottom: 12px;
+      color: #f1f5f9;
+    }
+    h3 {
+      font-size: 1.05rem;
+      font-weight: 600;
+      margin: 20px 0 8px;
+      color: #cbd5e1;
+    }
+    p, li {
+      font-size: 0.92rem;
+      line-height: 1.7;
+      color: #94a3b8;
+      margin-bottom: 8px;
+    }
+    ul, ol { padding-left: 20px; margin-bottom: 12px; }
+    li { margin-bottom: 4px; }
+
+    code {
+      font-family: 'JetBrains Mono', monospace;
+      background: var(--code-bg);
+      border: 1px solid rgba(51,65,85,0.5);
+      border-radius: 6px;
+      padding: 2px 8px;
+      font-size: 0.82rem;
+      color: #818cf8;
+    }
+
+    pre {
+      background: var(--code-bg);
+      border: 1px solid rgba(51,65,85,0.5);
+      border-radius: 10px;
+      padding: 20px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.82rem;
+      color: #94a3b8;
+      line-height: 1.7;
+      overflow-x: auto;
+      margin: 12px 0;
+    }
+
+    .method {
+      display: inline-block;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.78rem;
+      font-weight: 700;
+      padding: 3px 10px;
+      border-radius: 6px;
+      margin-right: 8px;
+    }
+    .method.post { background: rgba(34,197,94,0.15); color: #4ade80; }
+    .method.get { background: rgba(99,102,241,0.15); color: #818cf8; }
+
+    .endpoint {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.92rem;
+      color: #38bdf8;
+    }
+
+    .param-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 12px 0;
+    }
+    .param-table th, .param-table td {
+      text-align: left;
+      padding: 10px 14px;
+      border-bottom: 1px solid rgba(51,65,85,0.3);
+      font-size: 0.88rem;
+    }
+    .param-table th {
+      color: var(--muted);
+      font-weight: 600;
+      text-transform: uppercase;
+      font-size: 0.72rem;
+      letter-spacing: 0.08em;
+    }
+    .param-table td:first-child {
+      font-family: 'JetBrains Mono', monospace;
+      color: #818cf8;
+      font-size: 0.82rem;
+    }
+    .required { color: var(--red); font-size: 0.72rem; font-weight: 700; }
+    .optional { color: var(--muted); font-size: 0.72rem; }
+
+    .nav-links {
+      display: flex;
+      gap: 16px;
+      justify-content: center;
+      margin-top: 32px;
+      flex-wrap: wrap;
+    }
+    .nav-links a {
+      color: #818cf8;
+      text-decoration: none;
+      font-size: 0.88rem;
+      font-weight: 500;
+      border: 1px solid var(--border);
+      padding: 10px 20px;
+      border-radius: 10px;
+      background: var(--surface);
+      transition: border-color 0.2s;
+    }
+    .nav-links a:hover { border-color: var(--border-h); }
+
+    .toc {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 10px;
+      margin: 16px 0;
+    }
+    .toc a {
+      display: block;
+      padding: 12px 16px;
+      background: rgba(2,6,23,0.5);
+      border: 1px solid rgba(51,65,85,0.4);
+      border-radius: 10px;
+      color: #818cf8;
+      text-decoration: none;
+      font-size: 0.85rem;
+      font-weight: 500;
+      transition: border-color 0.2s, transform 0.15s;
+    }
+    .toc a:hover { border-color: var(--border-h); transform: translateX(2px); }
+
+    .status-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 0.72rem;
+      font-weight: 700;
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .status-200 { background: rgba(34,197,94,0.15); color: #4ade80; }
+    .status-400 { background: rgba(239,68,68,0.15); color: #fca5a5; }
+    .status-401 { background: rgba(245,158,11,0.15); color: #fbbf24; }
+    .status-404 { background: rgba(245,158,11,0.15); color: #fbbf24; }
+    .status-408 { background: rgba(245,158,11,0.15); color: #fbbf24; }
+    .status-429 { background: rgba(245,158,11,0.15); color: #fbbf24; }
+    .status-500 { background: rgba(239,68,68,0.15); color: #fca5a5; }
+
+    @media (max-width: 520px) {
+      .toc { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <div class="header">
+    <div class="badge">API Documentation</div>
+    <h1>Video Embed Link Extractor API</h1>
+    <p class="subtitle">Extract RPM, P2P, and UPN stream links for any movie or series</p>
+  </div>
+
+  <!-- Quick Start -->
+  <div class="card" id="quickstart">
+    <div class="card-title">🚀 Quick Start</div>
+    <h2>Get Up and Running in 3 Steps</h2>
+    <ol>
+      <li><strong>Register</strong> — Get your unique API key via <code>POST /auth/register</code></li>
+      <li><strong>Request</strong> — Send a movie/series name to <code>POST /v1/extract</code></li>
+      <li><strong>Use Links</strong> — Receive RPM, P2P, and UPN stream URLs in milliseconds</li>
+    </ol>
+    <p>Base URL: <code id="baseUrl"></code></p>
+  </div>
+
+  <!-- Table of Contents -->
+  <div class="card">
+    <div class="card-title">📑 Contents</div>
+    <div class="toc">
+      <a href="#authentication">Authentication</a>
+      <a href="#register">Register API Key</a>
+      <a href="#extract">Extract Links</a>
+      <a href="#health">Health Check</a>
+      <a href="#response">Response Format</a>
+      <a href="#errors">Error Codes</a>
+      <a href="#rate-limiting">Rate Limiting</a>
+      <a href="#integration">Integration Guide</a>
+      <a href="#examples">Code Examples</a>
+    </div>
+  </div>
+
+  <!-- Authentication -->
+  <div class="card" id="authentication">
+    <div class="card-title">🔐 Authentication</div>
+    <h2>Authentication</h2>
+    <p>All extraction endpoints require an API key passed in the <code>X-API-Key</code> header.</p>
+    <pre>X-API-Key: mk-m5z8abc-def1234567890abcdef1234567890-a1b2c3d4</pre>
+    <p>API keys follow the format <code>mk-{timestamp}-{random}-{checksum}</code> — each key is cryptographically unique and non-guessable.</p>
+  </div>
+
+  <!-- Register -->
+  <div class="card" id="register">
+    <div class="card-title">📝 Register</div>
+    <h2>Register a New API Key</h2>
+    <p><span class="method post">POST</span> <span class="endpoint">/auth/register</span></p>
+    <p>No authentication required. Rate limited to 10 registrations per IP per hour.</p>
+
+    <h3>Request Body</h3>
+    <table class="param-table">
+      <thead><tr><th>Field</th><th>Type</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td>name <span class="required">REQUIRED</span></td><td>string</td><td>Your name or site name (2–80 chars)</td></tr>
+        <tr><td>email <span class="optional">OPTIONAL</span></td><td>string</td><td>Your email address</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Example Request</h3>
+    <pre>curl -X POST <span id="baseUrl2"></span>/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"name": "My Website", "email": "admin@example.com"}'</pre>
+
+    <h3>Example Response <span class="status-badge status-200">201</span></h3>
+    <pre>{
+  "success": true,
+  "message": "API key created successfully. Save it — it won't be shown again.",
+  "data": {
+    "api_key": "mk-m5z8abc-def1234567890abcdef1234567890-a1b2c3d4",
+    "name": "My Website",
+    "created_at": "2026-05-18T12:00:00.000Z"
+  }
+}</pre>
+  </div>
+
+  <!-- Extract -->
+  <div class="card" id="extract">
+    <div class="card-title">📡 Extract</div>
+    <h2>Extract Stream Links</h2>
+    <p><span class="method post">POST</span> <span class="endpoint">/v1/extract</span></p>
+    <p>Requires <code>X-API-Key</code> header. Returns RPM, P2P, and UPN stream URLs.</p>
+
+    <h3>Request Body</h3>
+    <table class="param-table">
+      <thead><tr><th>Field</th><th>Type</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td>type <span class="required">REQUIRED</span></td><td>string</td><td><code>"movie"</code> or <code>"series"</code></td></tr>
+        <tr><td>name <span class="required">REQUIRED</span></td><td>string</td><td>Title of the movie or series</td></tr>
+        <tr><td>season <span class="optional">OPTIONAL</span></td><td>integer</td><td>Season number (required for series)</td></tr>
+        <tr><td>episode <span class="optional">OPTIONAL</span></td><td>integer</td><td>Episode number (required for series)</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Example Request — Movie</h3>
+    <pre>curl -X POST <span id="baseUrl3"></span>/v1/extract \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: YOUR_API_KEY" \
+  -d '{"type": "movie", "name": "Dhurandhar"}'</pre>
+
+    <h3>Example Request — Series</h3>
+    <pre>curl -X POST <span id="baseUrl4"></span>/v1/extract \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: YOUR_API_KEY" \
+  -d '{"type": "series", "name": "Mirzapur", "season": 3, "episode": 1}'</pre>
+
+    <h3>Example Response <span class="status-badge status-200">200</span></h3>
+    <pre>{
+  "success": true,
+  "request_time_ms": 2847,
+  "cached": false,
+  "data": {
+    "type": "movie",
+    "original_name": "Dhurandhar",
+    "normalized_name": "dhurandhar",
+    "source_url": "https://multimovies.fyi/movies/dhurandhar/",
+    "links": {
+      "rpm": "https://multimovies.rpmhub.site/#abc123",
+      "p2p": "https://multimovies.p2pplay.pro/#abc123",
+      "upn": "https://server1.uns.bio/#abc123"
+    },
+    "generated_at": "2026-05-18T12:00:00.000Z"
+  }
+}</pre>
+  </div>
+
+  <!-- Health -->
+  <div class="card" id="health">
+    <div class="card-title">💚 Health</div>
+    <h2>Health Check</h2>
+    <p><span class="method get">GET</span> <span class="endpoint">/health</span></p>
+    <p>No authentication required. Returns server status and uptime.</p>
+
+    <h3>Example Response <span class="status-badge status-200">200</span></h3>
+    <pre>{
+  "status": "ok",
+  "uptime": 3600
+}</pre>
+  </div>
+
+  <!-- Response Format -->
+  <div class="card" id="response">
+    <div class="card-title">📦 Response Format</div>
+    <h2>Consistent Response Structure</h2>
+
+    <h3>Success</h3>
+    <pre>{
+  "success": true,
+  "request_time_ms": 2847,
+  "cached": false,
+  "data": { ... }
+}</pre>
+
+    <h3>Error</h3>
+    <pre>{
+  "success": false,
+  "error": "Clear human-readable error message",
+  "code": "ERROR_CODE"
+}</pre>
+
+    <p>The <code>cached</code> field indicates whether the result was served from cache (instant) or freshly extracted.</p>
+  </div>
+
+  <!-- Errors -->
+  <div class="card" id="errors">
+    <div class="card-title">⚠️ Error Codes</div>
+    <h2>Error Reference</h2>
+    <table class="param-table">
+      <thead><tr><th>Code</th><th>HTTP Status</th><th>Meaning</th></tr></thead>
+      <tbody>
+        <tr><td>MISSING_NAME</td><td><span class="status-badge status-400">400</span></td><td>Request body missing the "name" field</td></tr>
+        <tr><td>INVALID_TYPE</td><td><span class="status-badge status-400">400</span></td><td>"type" must be "movie" or "series"</td></tr>
+        <tr><td>INVALID_API_KEY</td><td><span class="status-badge status-401">401</span></td><td>Missing, invalid, or revoked API key</td></tr>
+        <tr><td>SOURCE_NOT_FOUND</td><td><span class="status-badge status-404">404</span></td><td>Movie/series not found on source</td></tr>
+        <tr><td>LINKS_NOT_FOUND</td><td><span class="status-badge status-400">422</span></td><td>No embed links found in page</td></tr>
+        <tr><td>RATE_LIMITED</td><td><span class="status-badge status-429">429</span></td><td>Too many requests — slow down</td></tr>
+        <tr><td>TIMEOUT</td><td><span class="status-badge status-408">408</span></td><td>Source page did not respond in time</td></tr>
+        <tr><td>INTERNAL_ERROR</td><td><span class="status-badge status-500">500</span></td><td>Unexpected server error</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Rate Limiting -->
+  <div class="card" id="rate-limiting">
+    <div class="card-title">🛡️ Rate Limiting</div>
+    <h2>Rate Limits</h2>
+    <ul>
+      <li><strong>Registration:</strong> 10 requests per IP per hour</li>
+      <li><strong>Extraction:</strong> 100 requests per API key per minute (configurable)</li>
+    </ul>
+    <p>Rate limit headers are included in every response (<code>RateLimit-Limit</code>, <code>RateLimit-Remaining</code>, <code>RateLimit-Reset</code>).</p>
+  </div>
+
+  <!-- Integration Guide -->
+  <div class="card" id="integration">
+    <div class="card-title">🔗 Integration Guide</div>
+    <h2>How to Integrate Into Your Website</h2>
+
+    <h3>Step 1: Get Your API Key</h3>
+    <p>Call the registration endpoint once and save the returned key securely on your server. <strong>Never expose your API key in frontend JavaScript.</strong></p>
+
+    <h3>Step 2: Create a Backend Proxy</h3>
+    <p>From your server, call our API and forward the results to your frontend. This keeps your API key hidden.</p>
+
+    <h3>Step 3: Display Links to Users</h3>
+    <p>Use the returned RPM, P2P, and UPN URLs in your video player or as download links.</p>
+
+    <h3>Architecture</h3>
+    <pre>User's Browser → Your Server (proxy) → Our API → Stream URLs → Your Server → User's Browser</pre>
+
+    <h3>Caching Recommendation</h3>
+    <p>Cache results on your end for the same movie/series. Our API already caches, but your own cache reduces latency and API calls.</p>
+  </div>
+
+  <!-- Code Examples -->
+  <div class="card" id="examples">
+    <div class="card-title">💻 Code Examples</div>
+    <h2>Integration Examples</h2>
+
+    <h3>Node.js / Express</h3>
+    <pre>const express = require('express');
+const app = express();
+
+const API_KEY = process.env.MOVIE_API_KEY;
+const API_URL = process.env.MOVIE_API_URL || 'http://localhost:3000';
+
+app.get('/api/stream-links', async (req, res) => {
+  try {
+    const { type, name, season, episode } = req.query;
+
+    const response = await fetch(`${API_URL}/v1/extract`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-API-Key': API_KEY,
+      },
+      body: JSON.stringify({
+        type,
+        name,
+        ...(type === 'series' && { season: parseInt(season), episode: parseInt(episode) }),
+      }),
+    });
+
+    const data = await response.json();
+
+    if (!data.success) {
+      return res.status(response.status).json({ error: data.error });
+    }
+
+    res.json({ links: data.data.links });
+  } catch (err) {
+    console.error('Stream link extraction failed:', err.message);
+    res.status(500).json({ error: 'Failed to fetch stream links' });
+  }
+});
+
+app.listen(8080);</pre>
+
+    <h3>Python / Flask</h3>
+    <pre>import os
+import requests
+from flask import Flask, request, jsonify
+
+app = Flask(__name__)
+
+API_KEY = os.environ.get("MOVIE_API_KEY")
+API_URL = os.environ.get("MOVIE_API_URL", "http://localhost:3000")
+
+@app.route("/api/stream-links")
+def stream_links():
+    try:
+        payload = {
+            "type": request.args.get("type"),
+            "name": request.args.get("name"),
+        }
+        if payload["type"] == "series":
+            payload["season"] = int(request.args.get("season", 1))
+            payload["episode"] = int(request.args.get("episode", 1))
+
+        resp = requests.post(
+            f"{API_URL}/v1/extract",
+            json=payload,
+            headers={"X-API-Key": API_KEY},
+            timeout=10,
+        )
+        data = resp.json()
+
+        if not data.get("success"):
+            return jsonify({"error": data.get("error")}), resp.status_code
+
+        return jsonify({"links": data["data"]["links"]})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+if __name__ == "__main__":
+    app.run(port=8080)</pre>
+
+    <h3>PHP</h3>
+    <pre>&lt;?php
+$apiKey = getenv('MOVIE_API_KEY');
+$apiUrl = getenv('MOVIE_API_URL') ?: 'http://localhost:3000';
+
+$type = $_GET['type'] ?? '';
+$name = $_GET['name'] ?? '';
+
+if (!$type || !$name) {
+    http_response_code(400);
+    echo json_encode(['error' => 'Missing type or name']);
+    exit;
+}
+
+$payload = ['type' => $type, 'name' => $name];
+if ($type === 'series') {
+    $payload['season'] = (int)($_GET['season'] ?? 1);
+    $payload['episode'] = (int)($_GET['episode'] ?? 1);
+}
+
+$ch = curl_init("$apiUrl/v1/extract");
+curl_setopt($ch, CURLOPT_POST, true);
+curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
+curl_setopt($ch, CURLOPT_HTTPHEADER, [
+    'Content-Type: application/json',
+    "X-API-Key: $apiKey",
+]);
+curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+
+$response = curl_exec($ch);
+$httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+curl_close($ch);
+
+http_response_code($httpCode);
+echo $response;
+?&gt;</pre>
+
+    <h3>cURL</h3>
+    <pre>curl -X POST <span id="baseUrl5"></span>/v1/extract \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: YOUR_API_KEY" \
+  -d '{"type": "movie", "name": "Pathaan"}'</pre>
+  </div>
+
+  <!-- Navigation -->
+  <div class="nav-links">
+    <a href="/">← API Tester</a>
+    <a href="https://github.com" target="_blank" rel="noopener">GitHub</a>
+  </div>
+
+</div>
+
+<script>
+  const baseUrl = window.location.origin;
+  document.getElementById('baseUrl').textContent = baseUrl;
+  document.getElementById('baseUrl2').textContent = baseUrl;
+  document.getElementById('baseUrl3').textContent = baseUrl;
+  document.getElementById('baseUrl4').textContent = baseUrl;
+  document.getElementById('baseUrl5').textContent = baseUrl;
+</script>
+</body>
+</html>

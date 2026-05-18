@@ -1,0 +1,35 @@
+# Dependencies
+node_modules/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Build artifacts
+dist/
+.next/
+out/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Cache
+.cache/
+
+# Sensitive data
+.env
+.env.local
+.env.*.local
+data/keys.json
