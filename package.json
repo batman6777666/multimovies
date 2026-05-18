@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
-    "build": "echo 'No build step required'"
+    "build": "echo 'No build step required'",
+    "build:frontend": "npm install --prefix frontend && npm run --prefix frontend build && cp -r frontend/out ./out"
   },
   "dependencies": {
     "cors": "^2.8.5",
