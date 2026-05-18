@@ -1,13 +1,54 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Web Page Inspector</title>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
-  </body>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Web Page Inspector</title>
+  <meta name="description" content="Inspect web pages and extract pattern links">
+  <link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+  <div class="bg-glow"></div>
+  <div class="container">
+    <h1>Web Page Inspector</h1>
+    <p class="subtitle">Extract RPM, P2P & UPN stream links from any webpage</p>
+
+    <div class="input-wrapper">
+      <div class="input-group">
+        <input type="url" id="url-input" placeholder="https://example.com/movie/123" disabled>
+        <button id="analyze-btn" disabled>Inspect Page</button>
+      </div>
+    </div>
+
+    <div class="loading" id="loading" style="display: none;">
+      <div class="spinner"></div>
+      <div class="loading-steps" id="loading-steps"></div>
+    </div>
+
+    <div class="error" id="error" style="display: none;">
+      <span class="error-icon">&#9888;</span>
+      <span id="error-text"></span>
+    </div>
+
+    <div id="results-container" style="display: none;">
+      <div class="stats">
+        <div class="stat-card">
+          <div class="stat-number" id="found-count">0</div>
+          <div class="stat-label">Links Found</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-number">3</div>
+          <div class="stat-label">Patterns Searched</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-number" id="rpm-count">0</div>
+          <div class="stat-label">RPM Matches</div>
+        </div>
+      </div>
+      <div class="results" id="results"></div>
+    </div>
+  </div>
+
+  <script src="assets/app.js"></script>
+</body>
 </html>
