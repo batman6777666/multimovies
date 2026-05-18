@@ -8,7 +8,7 @@ const PORT = process.env.PORT || 3000;
 
 app.use(cors());
 app.use(express.json());
-app.use(express.static(path.join(__dirname, 'frontend', 'dist')));
+app.use(express.static(path.join(__dirname, 'public')));
 
 function log(step, msg) {
   const ts = new Date().toISOString().split('T')[1].replace('Z', '');
