@@ -8,7 +8,7 @@ const PORT = process.env.PORT || 3000;
 
 app.use(cors());
 app.use(express.json());
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(path.join(__dirname, 'frontend', 'dist')));
 
 function log(step, msg) {
   const ts = new Date().toISOString().split('T')[1].replace('Z', '');
@@ -372,7 +372,7 @@ app.post('/api/extract-links', async (req, res) => {
 
 app.get('/', (req, res) => {
   log('API', 'GET / | Serving frontend');
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+  res.sendFile(path.join(__dirname, 'frontend', 'dist', 'index.html'));
 });
 
 app.listen(PORT, () => {
