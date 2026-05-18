@@ -19,7 +19,7 @@ const app = express();
 
 app.use(cors());
 app.use(express.json({ limit: '10kb' }));
-app.use(express.static(path.join(__dirname, '..', 'public')));
+app.use(express.static(path.join(__dirname, '..', 'frontend', 'dist')));
 
 // ─── Public routes (no auth required) ───────────────────────────────────────
 
@@ -33,6 +33,15 @@ app.use('/auth', authRouter);
 // ─── Versioned API (API key required) ────────────────────────────────────────
 
 app.use('/v1', authMiddleware, rateLimiter, extractRouter);
+
+// ─── SPA fallback ────────────────────────────────────────────────────────────
+
+app.use((_req, res, next) => {
+  if (req.path.startsWith('/v1') || req.path.startsWith('/auth') || req.path.startsWith('/health')) {
+    return next();
+  }
+  res.sendFile(path.join(__dirname, '..', 'frontend', 'dist', 'index.html'));
+});
 
 // ─── 404 catch-all ───────────────────────────────────────────────────────────
 
