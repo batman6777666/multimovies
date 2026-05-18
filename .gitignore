@@ -8,7 +8,7 @@ node_modules/
 
 # Build artifacts
 dist/
-.next/
+frontend/dist/
 out/
 
 # Logs
