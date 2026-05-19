@@ -8,7 +8,6 @@ node_modules/
 
 # Build artifacts
 out/
-frontend/dist/
 
 # Logs
 *.log

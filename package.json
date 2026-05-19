@@ -3,13 +3,8 @@
   "version": "2.0.0",
   "private": true,
   "scripts": {
-    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
-    "dev:backend": "cd backend && npm run dev",
-    "dev:frontend": "cd frontend && npm run dev",
+    "dev": "cd backend && npm run dev",
     "start": "cd backend && npm start",
-    "install:all": "npm install && cd backend && npm install && cd ../frontend && npm install"
-  },
-  "devDependencies": {
-    "concurrently": "^9.0.0"
+    "install:all": "cd backend && npm install"
   }
 }
