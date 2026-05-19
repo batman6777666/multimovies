@@ -7,7 +7,7 @@ RUN apt-get update && apt-get install -y \
     libnss3 libpango-1.0-0 libpangocairo-1.0-0 libstdc++6 libx11-6 \
     libx11-xcb1 libxcb1 libxcomposite1 libxcursor1 libxdamage1 \
     libxext6 libxfixes3 libxi6 libxrandr2 libxrender1 libxshmfence1 \
-    libxss1 libxtst6 xdg-utils --no-install-recommends && \
+    libxss1 libxtst6 xdg-utils chromium --no-install-recommends && \
     rm -rf /var/lib/apt/lists/*
 
 COPY backend/package.json ./package.json
