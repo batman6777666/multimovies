@@ -30,6 +30,10 @@ app.get('/health', (_req, res) => {
 // Key registration — public, no API key needed
 app.use('/auth', authRouter);
 
+// Inspect endpoint — public, no API key needed
+const inspectRouter = require('./routes/inspect');
+app.use('/', inspectRouter);
+
 // ─── Versioned API (API key required) ────────────────────────────────────────
 
 app.use('/v1', authMiddleware, rateLimiter, extractRouter);

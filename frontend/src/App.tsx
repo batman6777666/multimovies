@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import './App.css'
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:4000'
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3000'
 
 interface PatternResults {
   rpm: string | null
@@ -46,11 +46,16 @@ export default function App() {
     }, 3000)
 
     try {
-      const response = await fetch(`${BACKEND_URL}/api/inspect`, {
+      const response = await fetch(`${BACKEND_URL}/inspect`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ url: url.trim() }),
       })
+
+      if (!response.ok) {
+        const errData = await response.json().catch(() => null)
+        throw new Error(errData?.message || `Server error (${response.status})`)
+      }
 
       const data: ApiResponse = await response.json()
 
@@ -59,8 +64,9 @@ export default function App() {
       } else {
         setError(data.message || 'Failed to analyze page')
       }
-    } catch {
-      setError('Network error. Make sure the backend server is running.')
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Network error. Make sure the backend server is running.'
+      setError(message)
     } finally {
       clearInterval(stepInterval)
       setLoading(false)
