@@ -41,19 +41,20 @@ RUN apt-get update && apt-get install -y \
     --no-install-recommends && \
     rm -rf /var/lib/apt/lists/*
 
-# HF Spaces clones repo to /home/user/app
-WORKDIR /home/user/app
+# Create app directory
+RUN mkdir -p /app/backend/data
 
-# Copy everything (node_modules, .env excluded by .dockerignore)
-COPY . .
+# Copy backend source directly into /app/backend
+COPY backend/package.json /app/backend/package.json
+COPY backend/package-lock.json /app/backend/package-lock.json
+COPY backend/config/ /app/backend/config/
+COPY backend/src/ /app/backend/src/
+COPY backend/public/ /app/backend/public/
+COPY backend/data/ /app/backend/data/
 
-# Install backend dependencies
-WORKDIR /home/user/app/backend
+# Install dependencies
 ENV PUPPETEER_SKIP_DOWNLOAD=true
-RUN npm ci --only=production 2>/dev/null || npm install --only=production
-
-# Ensure data directory exists
-RUN mkdir -p /home/user/app/backend/data && chmod 755 /home/user/app/backend/data
+RUN cd /app/backend && npm ci --only=production 2>/dev/null || npm install --only=production
 
 # Hugging Face requires port 7860
 ENV PORT=7860
@@ -68,4 +69,4 @@ EXPOSE 7860
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD wget --no-verbose --tries=1 --spider http://localhost:7860/health || exit 1
 
-CMD ["node", "/home/user/app/backend/src/server.js"]
+CMD ["node", "/app/backend/src/server.js"]
