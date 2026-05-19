@@ -101,6 +101,97 @@ async function loadAndScan(browser, url, merged, allPages) {
   return false;
 }
 
+/**
+ * Fetches player options from the source page HTML using Node.js fetch.
+ * Parses the HTML to find #playeroptionsul li elements with data attributes.
+ */
+async function fetchPlayerOptions(targetUrl) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), TIMEOUT);
+
+  try {
+    const res = await fetch(targetUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5',
+      },
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+
+    const html = await res.text();
+
+    // Extract player options from HTML using regex
+    // Pattern: <li ... data-post="..." data-nume="..." data-type="..." ...>
+    const liPattern = /<li[^>]*data-post="([^"]*)"[^>]*data-nume="([^"]*)"[^>]*data-type="([^"]*)"[^>]*>/gi;
+    const options = [];
+    let match;
+    while ((match = liPattern.exec(html)) !== null) {
+      options.push({
+        post: match[1],
+        nume: match[2],
+        type: match[3],
+      });
+    }
+
+    console.log(`[extractLinks] Fetched source page, found ${options.length} player options via regex`);
+    return { options, html };
+  } catch (err) {
+    clearTimeout(timeout);
+    console.error(`[extractLinks] Failed to fetch source page: ${err.message}`);
+    return { options: [], html: '' };
+  }
+}
+
+/**
+ * Makes AJAX call to WordPress admin-ajax.php directly from Node.js.
+ */
+async function fetchEmbedUrl(baseUrl, option) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), TIMEOUT);
+
+  try {
+    const body = new URLSearchParams({
+      action: 'doo_player_ajax',
+      post: option.post,
+      nume: option.nume,
+      type: option.type,
+    }).toString();
+
+    const ajaxUrl = baseUrl.replace(/\/[^/]*$/, '') + '/wp-admin/admin-ajax.php';
+
+    const res = await fetch(ajaxUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Referer': baseUrl,
+        'Accept': '*/*',
+        'Origin': new URL(baseUrl).origin,
+      },
+      body,
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+
+    const text = await res.text();
+    console.log(`[extractLinks] AJAX[${option.type}/${option.nume}] status=${res.status} body=${text.substring(0, 200)}`);
+
+    try {
+      const data = JSON.parse(text);
+      const url = data.embed_url || data.src || data.url || data.player_url || null;
+      return url && !url.includes('youtube') && !url.includes('youtu.be') ? url : null;
+    } catch {
+      return null;
+    }
+  } catch (err) {
+    clearTimeout(timeout);
+    console.error(`[extractLinks] AJAX[${option.type}/${option.nume}] failed: ${err.message}`);
+    return null;
+  }
+}
+
 async function extractLinks(browser, targetUrl) {
   const startTime = Date.now();
   console.log(`[extractLinks] Starting: ${targetUrl}`);
@@ -109,87 +200,25 @@ async function extractLinks(browser, targetUrl) {
   const merged = { rpm: null, p2p: null, upn: null };
 
   try {
-    // STEP 1: Load source page
-    const sourcePage = await setupPage(browser);
-    allPages.push(sourcePage);
-
-    try {
-      await sourcePage.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: TIMEOUT });
-      // Wait for Cloudflare challenge to pass (up to 15s)
-      await sourcePage.waitForFunction(
-        () => !document.title.includes('Just a moment') && !document.title.includes('Checking your browser'),
-        { timeout: 15000 }
-      ).catch(() => {
-        console.log('[extractLinks] Cloudflare challenge may still be active');
-      });
-    } catch (err) {
-      if (!err.message?.includes('timeout') && !err.message?.includes('net::')) {
-        console.error('[extractLinks] Source page error:', err.message);
-      }
-    }
-
-    await sourcePage.waitForSelector('#playeroptionsul li[data-post]', { timeout: 5000 }).catch(() => {});
-
-    // STEP 2: Get player options
-    const options = await sourcePage.evaluate(() => {
-      return Array.from(document.querySelectorAll('#playeroptionsul li[data-post][data-nume][data-type]'))
-        .map(el => ({ post: el.dataset.post, nume: el.dataset.nume, type: el.dataset.type }));
-    });
-
-    console.log(`[extractLinks] Found ${options.length} player options`);
+    // STEP 1: Fetch source page HTML directly from Node.js (bypasses Cloudflare browser challenge)
+    const { options, html: sourceHtml } = await fetchPlayerOptions(targetUrl);
 
     if (options.length === 0) {
+      // Fallback: try scanning the HTML directly for RPM/P2P/UPN patterns
+      const scan = scanHtml(sourceHtml);
+      if (mergeFound(merged, scan)) {
+        const videoId = (merged.rpm || merged.p2p || merged.upn)?.match(/[#\/]([a-zA-Z0-9_-]+)$/)?.[1] || 'unknown';
+        return { success: true, rpm: merged.rpm, p2p: merged.p2p, upn: merged.upn, videoId };
+      }
       return { success: false, code: 'LINKS_NOT_FOUND', error: 'No player options found' };
     }
 
-    // STEP 3: Get all embed URLs via AJAX in PARALLEL
-    const ajaxResults = await sourcePage.evaluate(async (opts) => {
-      const results = await Promise.all(opts.map(async (opt) => {
-        try {
-          const body = new URLSearchParams({
-            action: 'doo_player_ajax',
-            post: opt.post,
-            nume: opt.nume,
-            type: opt.type,
-          }).toString();
-
-          const res = await fetch('/wp-admin/admin-ajax.php', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body,
-          });
-          const text = await res.text();
-          return { ok: res.ok, status: res.status, body: text, opt };
-        } catch (err) {
-          return { ok: false, error: err.message, opt };
-        }
-      }));
-      return results;
-    }, options);
-
-    // Log raw AJAX responses for debugging
-    ajaxResults.forEach((r, i) => {
-      if (!r.ok) {
-        console.log(`[extractLinks] AJAX[${i}] FAILED: ${r.error || r.status}`);
-      } else {
-        const bodyPreview = r.body.substring(0, 200);
-        console.log(`[extractLinks] AJAX[${i}] OK (${r.opt.type}/${r.opt.nume}): ${bodyPreview}`);
-      }
-    });
-
-    // Extract valid embed URLs from results
-    const embedUrls = ajaxResults
-      .map(r => {
-        if (!r.ok) return null;
-        try {
-          const data = JSON.parse(r.body);
-          const url = data.embed_url || data.src || data.url || data.player_url || null;
-          return url && !url.includes('youtube') && !url.includes('youtu.be') ? url : null;
-        } catch {
-          return null;
-        }
-      })
-      .filter(Boolean);
+    // STEP 2: Get embed URLs via AJAX directly from Node.js
+    const embedUrls = [];
+    for (const option of options) {
+      const url = await fetchEmbedUrl(targetUrl, option);
+      if (url) embedUrls.push(url);
+    }
 
     console.log(`[extractLinks] ${embedUrls.length} valid embed URLs:`, embedUrls);
 
@@ -197,14 +226,14 @@ async function extractLinks(browser, targetUrl) {
       return { success: false, code: 'LINKS_NOT_FOUND', error: 'No embed URLs found' };
     }
 
-    // STEP 4: Load embed pages sequentially — stop as soon as all 3 found
+    // STEP 3: Load embed pages in browser and extract stream links
     for (const url of embedUrls) {
       if (merged.rpm && merged.p2p && merged.upn) break;
       const done = await loadAndScan(browser, url, merged, allPages);
       if (done) break;
     }
 
-    // STEP 5: Return results
+    // STEP 4: Return results
     const firstUrl = merged.rpm || merged.p2p || merged.upn;
     const videoId = firstUrl ? (firstUrl.match(/[#\/]([a-zA-Z0-9_-]+)$/)?.[1] || 'unknown') : null;
 
