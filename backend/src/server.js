@@ -55,7 +55,7 @@ async function start() {
     // Init cache first (fast — ms)
     await initCache();
 
-    // Start listening immediately — don't block on browser pool
+    // Start listening immediately — browser pool is lazy-init on /inspect
     app.listen(config.PORT, () => {
       console.log('');
       console.log('╔══════════════════════════════════════════╗');
@@ -70,15 +70,7 @@ async function start() {
       console.log(`  POST /v1/extract     (X-API-Key required)`);
       console.log(`  GET  /health         http://localhost:${config.PORT}/health`);
       console.log('');
-      console.log('[Server] Warming up browser pool in background…');
-
-      // Warm browsers after server is already accepting requests
-      // withBrowser() handles lazy init if pool isn't ready yet
-      initPool().then(() => {
-        console.log('[Server] Browser pool ready. Full speed ahead.');
-      }).catch((err) => {
-        console.error('[Server] Browser pool failed to init:', err.message);
-      });
+      console.log('[Server] Ready. Extraction uses pure HTTP — blazing fast.');
     });
   } catch (err) {
     console.error('[FATAL] Server failed to start:', err.message);
@@ -90,7 +82,8 @@ async function start() {
 
 async function shutdown(signal) {
   console.log(`\n[${signal}] Shutting down gracefully…`);
-  await Promise.allSettled([shutdownPool(), closeCache()]);
+  try { await shutdownPool(); } catch {}
+  try { await closeCache(); } catch {}
   process.exit(0);
 }
 
