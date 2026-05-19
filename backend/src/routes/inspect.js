@@ -88,4 +88,58 @@ router.post('/inspect', async (req, res) => {
   });
 });
 
+// ─── POST /debug (no auth — returns raw page HTML for debugging) ──────────────
+
+router.post('/debug', async (req, res) => {
+  const { url } = req.body;
+
+  if (!url || typeof url !== 'string' || !url.trim()) {
+    return res.status(400).json({ success: false, message: 'Missing url' });
+  }
+
+  try {
+    const result = await withBrowser(async (browser) => {
+      const page = await browser.newPage();
+      await page.setUserAgent(
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+      );
+      await page.setCacheEnabled(false);
+
+      try {
+        await page.goto(url.trim(), { waitUntil: 'domcontentloaded', timeout: config.PAGE_LOAD_TIMEOUT_MS });
+      } catch (err) {
+        console.log('[debug] Page load error (non-fatal):', err.message);
+      }
+
+      await page.waitForSelector('#playeroptionsul li[data-post]', { timeout: 5000 }).catch(() => {});
+
+      const html = await page.content();
+      const options = await page.evaluate(() => {
+        return Array.from(document.querySelectorAll('#playeroptionsul li[data-post][data-nume][data-type]'))
+          .map(el => ({ post: el.dataset.post, nume: el.dataset.nume, type: el.dataset.type }));
+      });
+
+      const title = await page.title();
+      const hasPlayerOptions = options.length > 0;
+
+      await page.close();
+
+      return {
+        url: url.trim(),
+        title,
+        htmlLength: html.length,
+        playerOptionsCount: options.length,
+        playerOptions: options,
+        hasPlayerOptions,
+        htmlSnippet: html.substring(0, 3000),
+      };
+    });
+
+    res.json({ success: true, debug: result });
+  } catch (err) {
+    console.error('[debug] Error:', err.message);
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 module.exports = router;
