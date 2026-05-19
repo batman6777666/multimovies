@@ -143,8 +143,8 @@ async function extractLinks(browser, targetUrl) {
     }
 
     // STEP 3: Get all embed URLs via AJAX in PARALLEL
-    const embedUrls = await sourcePage.evaluate(async (opts) => {
-      const promises = opts.map(async (opt) => {
+    const ajaxResults = await sourcePage.evaluate(async (opts) => {
+      const results = await Promise.all(opts.map(async (opt) => {
         try {
           const body = new URLSearchParams({
             action: 'doo_player_ajax',
@@ -158,16 +158,38 @@ async function extractLinks(browser, targetUrl) {
             headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
             body,
           });
-          const data = await res.json();
+          const text = await res.text();
+          return { ok: res.ok, status: res.status, body: text, opt };
+        } catch (err) {
+          return { ok: false, error: err.message, opt };
+        }
+      }));
+      return results;
+    }, options);
+
+    // Log raw AJAX responses for debugging
+    ajaxResults.forEach((r, i) => {
+      if (!r.ok) {
+        console.log(`[extractLinks] AJAX[${i}] FAILED: ${r.error || r.status}`);
+      } else {
+        const bodyPreview = r.body.substring(0, 200);
+        console.log(`[extractLinks] AJAX[${i}] OK (${r.opt.type}/${r.opt.nume}): ${bodyPreview}`);
+      }
+    });
+
+    // Extract valid embed URLs from results
+    const embedUrls = ajaxResults
+      .map(r => {
+        if (!r.ok) return null;
+        try {
+          const data = JSON.parse(r.body);
           const url = data.embed_url || data.src || data.url || data.player_url || null;
           return url && !url.includes('youtube') && !url.includes('youtu.be') ? url : null;
         } catch {
           return null;
         }
-      });
-      const results = await Promise.all(promises);
-      return results.filter(Boolean);
-    }, options);
+      })
+      .filter(Boolean);
 
     console.log(`[extractLinks] ${embedUrls.length} valid embed URLs:`, embedUrls);
 
