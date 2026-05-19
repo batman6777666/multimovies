@@ -1,3 +1,14 @@
+---
+title: Multimovies
+emoji: 🎬
+colorFrom: indigo
+colorTo: purple
+sdk: docker
+sdk_version: ""
+app_file: app.py
+pinned: false
+---
+
 # Video Embed Link Extractor API
 
 A web scraping service that extracts streaming server links (RPM, P2P, UPN) from video hosting sites.
