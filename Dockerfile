@@ -43,20 +43,16 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
-# Copy backend files
-COPY backend/package.json backend/package-lock.json* ./
+# Copy everything (node_modules, .env, frontend excluded by .dockerignore)
+COPY . .
 
-# Skip Puppeteer's bundled Chromium download
+# Install backend dependencies
+WORKDIR /app/backend
 ENV PUPPETEER_SKIP_DOWNLOAD=true
-
-# Install production dependencies only
 RUN npm ci --only=production 2>/dev/null || npm install --only=production
 
-# Copy rest of backend source
-COPY backend/ .
-
 # Ensure data directory exists
-RUN mkdir -p /app/data && chmod 755 /app/data
+RUN mkdir -p /app/backend/data && chmod 755 /app/backend/data
 
 # Hugging Face requires port 7860
 ENV PORT=7860
@@ -71,4 +67,4 @@ EXPOSE 7860
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD wget --no-verbose --tries=1 --spider http://localhost:7860/health || exit 1
 
-CMD ["node", "src/server.js"]
+CMD ["node", "backend/src/server.js"]
