@@ -1,4 +1,4 @@
-const { STREAM_PATTERNS, BLOCKED_RESOURCE_TYPES, BLOCKED_URL_PATTERNS, EMBED_ATTRIBUTES } = require('../utils/constants');
+const { STREAM_PATTERNS, BLOCKED_RESOURCE_TYPES, BLOCKED_URL_PATTERNS, EMBED_ATTRIBUTES, LINK_TEMPLATES } = require('../utils/constants');
 const config = require('../../config/config');
 
 const TIMEOUT = config.PAGE_LOAD_TIMEOUT_MS;
@@ -28,8 +28,6 @@ async function setupPage(browser) {
   return page;
 }
 
-// ─── Load page — source page variant (wait for player options) ───────────────
-
 async function loadSourcePage(browser, url) {
   const page = await setupPage(browser);
   let status = 0;
@@ -53,8 +51,6 @@ async function loadSourcePage(browser, url) {
   }
 }
 
-// ─── Load page — embed/evid variant (wait for full DOM render) ───────────────
-
 async function loadEmbedPage(browser, url) {
   const page = await setupPage(browser);
   let status = 0;
@@ -67,14 +63,12 @@ async function loadEmbedPage(browser, url) {
     if (status === 0) return { page, status, ok: false };
     if (status === 403 || status === 451) return { page, status, ok: false };
 
-    // Wait for the page to fully render its DOM (iframes, server-items, etc.)
     await page.waitForFunction(
       () => document.querySelectorAll('iframe').length > 0 ||
            document.querySelectorAll('li.server-item[data-link]').length > 0,
       { timeout: 8000 }
     ).catch(() => {});
 
-    // Give JS a moment to finish rendering dynamic content
     await page.evaluate(() => new Promise(r => setTimeout(r, 2000)));
 
     return { page, status, ok: true };
@@ -87,39 +81,31 @@ async function loadEmbedPage(browser, url) {
   }
 }
 
-// ─── Extract real URLs from fully rendered DOM ───────────────────────────────
-// Gets the ENTIRE page HTML and regex-extracts RPM/P2P/UPN links
-
 async function extractRealUrlsFromDom(page) {
   const result = { rpm: null, p2p: null, upn: null, videoId: null };
 
-  // Get the full rendered HTML
   const html = await page.content();
 
-  // Regex extract URLs from the raw HTML
   const rpmMatch = html.match(/https?:\/\/multimovies\.rpmhub\.site\/[#?]?[a-zA-Z0-9_-]+/);
   const p2pMatch = html.match(/https?:\/\/multimovies\.p2pplay\.pro\/[#?]?[a-zA-Z0-9_-]+/);
   const upnMatch  = html.match(/https?:\/\/server1\.uns\.bio\/[#?]?[a-zA-Z0-9_-]+/);
 
-  if (rpmMatch) { result.rpm = rpmMatch[0]; console.log(`[html] rpm: ${rpmMatch[0]}`); }
-  if (p2pMatch) { result.p2p = p2pMatch[0]; console.log(`[html] p2p: ${p2pMatch[0]}`); }
-  if (upnMatch)  { result.upn = upnMatch[0];  console.log(`[html] upn: ${upnMatch[0]}`); }
+  if (rpmMatch) { result.rpm = rpmMatch[0]; }
+  if (p2pMatch) { result.p2p = p2pMatch[0]; }
+  if (upnMatch)  { result.upn = upnMatch[0]; }
 
-  // Fallback: check #vidFrame iframe src
   if (!result.rpm || !result.p2p || !result.upn) {
     const vidFrameSrc = await page.evaluate(() => {
       const frame = document.querySelector('#vidFrame');
       return frame && frame.src && frame.src.startsWith('http') ? frame.src : null;
     });
     if (vidFrameSrc) {
-      console.log(`[vidFrame] ${vidFrameSrc}`);
       if (!result.rpm && vidFrameSrc.includes('rpmhub')) result.rpm = vidFrameSrc;
       if (!result.p2p && vidFrameSrc.includes('p2pplay')) result.p2p = vidFrameSrc;
       if (!result.upn && vidFrameSrc.includes('uns.bio')) result.upn = vidFrameSrc;
     }
   }
 
-  // Fallback: check li.server-item data-link
   if (!result.rpm || !result.p2p || !result.upn) {
     const serverLinks = await page.evaluate(() => {
       const links = {};
@@ -128,12 +114,11 @@ async function extractRealUrlsFromDom(page) {
       });
       return links;
     });
-    if (!result.rpm) { const l = serverLinks.rpmshre || serverLinks.rpm || serverLinks.rpmshare; if (l) { result.rpm = l; console.log(`[server-item] rpm: ${l}`); } }
-    if (!result.p2p) { const l = serverLinks.strmp2 || serverLinks.p2p || serverLinks.p2pplay || serverLinks.strm; if (l) { result.p2p = l; console.log(`[server-item] p2p: ${l}`); } }
-    if (!result.upn) { const l = serverLinks.upnshr || serverLinks.upn || serverLinks.upnshare; if (l) { result.upn = l; console.log(`[server-item] upn: ${l}`); } }
+    if (!result.rpm) { const l = serverLinks.rpmshre || serverLinks.rpm || serverLinks.rpmshare; if (l) result.rpm = l; }
+    if (!result.p2p) { const l = serverLinks.strmp2 || serverLinks.p2p || serverLinks.p2pplay || serverLinks.strm; if (l) result.p2p = l; }
+    if (!result.upn) { const l = serverLinks.upnshr || serverLinks.upn || serverLinks.upnshare; if (l) result.upn = l; }
   }
 
-  // Extract videoId from first found link
   const firstLink = result.rpm || result.p2p || result.upn;
   if (firstLink) {
     const match = firstLink.match(/[#\/]([a-zA-Z0-9_-]+)$/);
@@ -142,8 +127,6 @@ async function extractRealUrlsFromDom(page) {
 
   return result;
 }
-
-// ─── Get player options from source page ─────────────────────────────────────
 
 async function getPlayerOptions(page) {
   return page.evaluate(() => {
@@ -155,8 +138,6 @@ async function getPlayerOptions(page) {
     }));
   });
 }
-
-// ─── AJAX call from Node.js context with page cookies ────────────────────────
 
 async function fetchEmbedUrlViaAjax(page, playerOption) {
   try {
@@ -191,93 +172,119 @@ async function fetchEmbedUrlViaAjax(page, playerOption) {
   }
 }
 
-// ─── Main extraction ─────────────────────────────────────────────────────────
-// Chain: source → AJAX → embed page → evid iframe → evid page → extract from DOM
+async function resolveOnePlayerOption(browser, sourcePage, opt) {
+  const embedUrl = await fetchEmbedUrlViaAjax(sourcePage, opt);
+  if (!embedUrl) return { rpm: null, p2p: null, upn: null, videoId: null };
+
+  const pages = [];
+  try {
+    const { page: embedPage } = await loadEmbedPage(browser, embedUrl);
+    pages.push(embedPage);
+
+    const iframeUrl = await embedPage.evaluate(() => {
+      for (const f of document.querySelectorAll('iframe')) {
+        if (f.src && f.src.startsWith('http')) return f.src;
+      }
+      return null;
+    });
+
+    if (!iframeUrl) return { rpm: null, p2p: null, upn: null, videoId: null };
+
+    if (iframeUrl.includes('rpmhub')) {
+      const match = iframeUrl.match(/[#\/]([a-zA-Z0-9_-]+)$/);
+      return { rpm: iframeUrl, p2p: null, upn: null, videoId: match ? match[1] : null };
+    }
+    if (iframeUrl.includes('p2pplay')) {
+      const match = iframeUrl.match(/[#\/]([a-zA-Z0-9_-]+)$/);
+      return { rpm: null, p2p: iframeUrl, upn: null, videoId: match ? match[1] : null };
+    }
+    if (iframeUrl.includes('uns.bio')) {
+      const match = iframeUrl.match(/[#\/]([a-zA-Z0-9_-]+)$/);
+      return { rpm: null, p2p: null, upn: iframeUrl, videoId: match ? match[1] : null };
+    }
+
+    const { page: iframePage } = await loadEmbedPage(browser, iframeUrl);
+    pages.push(iframePage);
+
+    return await extractRealUrlsFromDom(iframePage);
+  } catch (err) {
+    console.error(`[resolvePlayer] option ${opt.nume} failed:`, err.message);
+    return { rpm: null, p2p: null, upn: null, videoId: null };
+  } finally {
+    await Promise.allSettled(pages.map((p) => p.close()));
+  }
+}
 
 async function extractLinks(browser, targetUrl) {
   const startTime = Date.now();
   console.log(`[extractLinks] Starting: ${targetUrl}`);
 
-  const pages = [];
+  const allPages = [];
   try {
-    // Step 1: Load source page
     const { page: sourcePage, ok: sourceOk } = await loadSourcePage(browser, targetUrl);
-    pages.push(sourcePage);
+    allPages.push(sourcePage);
 
     if (!sourceOk) {
       return { success: false, code: 'SOURCE_NOT_FOUND', error: 'Source page not accessible' };
     }
 
-    // Step 2: Get player options
     const options = await getPlayerOptions(sourcePage);
-    console.log(`[extractLinks] Found ${options.length} player options`);
+    console.log(`[extractLinks] Found ${options.length} player options — racing for first videoId`);
 
     if (options.length === 0) {
       return { success: false, code: 'LINKS_NOT_FOUND', error: 'No player options found' };
     }
 
-    // Step 3: Try each player option
-    for (const opt of options) {
-      console.log(`[extractLinks] Trying option ${opt.nume}...`);
+    return new Promise((resolve) => {
+      let resolved = false;
+      let completed = 0;
+      const merged = { rpm: null, p2p: null, upn: null, videoId: null };
 
-      // AJAX to get embed URL
-      const embedUrl = await fetchEmbedUrlViaAjax(sourcePage, opt);
-      if (!embedUrl) continue;
+      for (const opt of options) {
+        resolveOnePlayerOption(browser, sourcePage, opt).then((result) => {
+          if (resolved) return;
 
-      // Navigate to embed page
-      const { page: embedPage } = await loadEmbedPage(browser, embedUrl);
-      pages.push(embedPage);
+          if (result.videoId) {
+            merged.videoId = result.videoId;
+            if (result.rpm) merged.rpm = result.rpm;
+            if (result.p2p) merged.p2p = result.p2p;
+            if (result.upn) merged.upn = result.upn;
+          }
 
-      // Find iframe URL on embed page
-      const iframeUrl = await embedPage.evaluate(() => {
-        for (const f of document.querySelectorAll('iframe')) {
-          if (f.src && f.src.startsWith('http')) return f.src;
-        }
-        return null;
-      });
+          if (!merged.videoId && result.videoId) {
+            merged.videoId = result.videoId;
+          }
+          if (!merged.rpm && result.rpm) merged.rpm = result.rpm;
+          if (!merged.p2p && result.p2p) merged.p2p = result.p2p;
+          if (!merged.upn && result.upn) merged.upn = result.upn;
 
-      if (!iframeUrl) {
-        console.log(`[extractLinks] No iframe found on embed page`);
-        continue;
+          if (merged.videoId && !resolved) {
+            resolved = true;
+            merged.rpm = merged.rpm || LINK_TEMPLATES.rpm(merged.videoId);
+            merged.p2p = merged.p2p || LINK_TEMPLATES.p2p(merged.videoId);
+            merged.upn = merged.upn || LINK_TEMPLATES.upn(merged.videoId);
+
+            console.log(`[extractLinks] SUCCESS in ${Date.now() - startTime}ms`);
+            console.log(`  rpm: ${merged.rpm}`);
+            console.log(`  p2p: ${merged.p2p}`);
+            console.log(`  upn: ${merged.upn}`);
+            resolve({ success: true, ...merged });
+          }
+
+          completed++;
+          if (completed === options.length && !resolved) {
+            console.log(`[extractLinks] No links found after ${Date.now() - startTime}ms`);
+            resolve({
+              success: false,
+              code: 'LINKS_NOT_FOUND',
+              error: 'No embed links found (rpm/p2p/upn missing)',
+            });
+          }
+        });
       }
-      console.log(`[extractLinks] Found iframe: ${iframeUrl}`);
-
-      // If the iframe URL itself is an RPM/P2P/UPN link, use it directly
-      if (iframeUrl.includes('rpmhub')) {
-        const match = iframeUrl.match(/[#\/]([a-zA-Z0-9_-]+)$/);
-        console.log(`[extractLinks] SUCCESS (direct rpm) in ${Date.now() - startTime}ms`);
-        return { success: true, rpm: iframeUrl, p2p: null, upn: null, videoId: match ? match[1] : null };
-      }
-      if (iframeUrl.includes('p2pplay')) {
-        const match = iframeUrl.match(/[#\/]([a-zA-Z0-9_-]+)$/);
-        console.log(`[extractLinks] SUCCESS (direct p2p) in ${Date.now() - startTime}ms`);
-        return { success: true, rpm: null, p2p: iframeUrl, upn: null, videoId: match ? match[1] : null };
-      }
-      if (iframeUrl.includes('uns.bio')) {
-        const match = iframeUrl.match(/[#\/]([a-zA-Z0-9_-]+)$/);
-        console.log(`[extractLinks] SUCCESS (direct upn) in ${Date.now() - startTime}ms`);
-        return { success: true, rpm: null, p2p: null, upn: iframeUrl, videoId: match ? match[1] : null };
-      }
-
-      // Otherwise navigate to the iframe page and extract from full HTML
-      const { page: iframePage } = await loadEmbedPage(browser, iframeUrl);
-      pages.push(iframePage);
-
-      const realUrls = await extractRealUrlsFromDom(iframePage);
-      if (realUrls.videoId) {
-        console.log(`[extractLinks] SUCCESS in ${Date.now() - startTime}ms`);
-        return { success: true, ...realUrls };
-      }
-    }
-
-    console.log(`[extractLinks] No links found after ${Date.now() - startTime}ms`);
-    return {
-      success: false,
-      code: 'LINKS_NOT_FOUND',
-      error: 'No embed links found (rpm/p2p/upn missing)',
-    };
+    });
   } finally {
-    await Promise.allSettled(pages.map((p) => p.close()));
+    await Promise.allSettled(allPages.map((p) => p.close()));
   }
 }
 
