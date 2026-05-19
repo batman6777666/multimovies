@@ -40,3 +40,4 @@ npm start
 ## Deploy to Hugging Face
 
 See `DEPLOY_HF.md` for detailed instructions.
+<!-- trigger rebuild -->
