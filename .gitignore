@@ -8,6 +8,7 @@ node_modules/
 
 # Build artifacts
 out/
+frontend/dist/
 
 # Logs
 *.log
@@ -27,7 +28,4 @@ Thumbs.db
 .cache/
 
 # Sensitive data
-.env
-.env.local
-.env.*.local
-data/keys.json
+backend/data/keys.json

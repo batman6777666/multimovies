@@ -12,24 +12,21 @@
 
 ## Upload Files
 
-Push the following files/folders to your Space repository:
+Upload ONLY these files and folders to your Space repository:
 
 ```
 Dockerfile
 .dockerignore
-package.json
-.env.example
-src/
-config/
-public/
-data/
+backend/
 ```
+
+That's it. The Dockerfile copies from `backend/` automatically.
 
 **DO NOT upload:**
 - `node_modules/`
 - `.env` (use HF Space Secrets instead)
-- `backend/` (TypeScript backend, not needed)
-- `*.md` files (except README.md for the Space)
+- `backend-ts/`
+- `frontend/`
 - `.git/`
 
 ## Configure Secrets

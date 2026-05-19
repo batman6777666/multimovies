@@ -3,6 +3,7 @@ npm-debug.log*
 .git/
 .gitignore
 .env
-backend/
+backend-ts/
+frontend/
 .DS_Store
 thumbs.db

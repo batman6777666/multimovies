@@ -1,26 +1,19 @@
 {
-  "name": "backend",
-  "version": "1.0.0",
-  "description": "Web Page Inspector & Pattern Extraction API",
-  "main": "dist/index.js",
+  "name": "video-embed-link-extractor",
+  "version": "2.0.0",
+  "description": "Blazing fast video embed link extractor API",
+  "main": "src/server.js",
   "scripts": {
-    "build": "tsc",
-    "start": "node dist/index.js",
-    "dev": "ts-node src/index.ts"
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "build": "echo 'No build step required'"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
   "dependencies": {
-    "cors": "^2.8.6",
-    "express": "^5.2.1",
-    "playwright": "^1.60.0"
-  },
-  "devDependencies": {
-    "@types/cors": "^2.8.19",
-    "@types/express": "^5.0.6",
-    "@types/node": "^25.8.0",
-    "ts-node": "^10.9.2",
-    "typescript": "^6.0.3"
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.0",
+    "express": "^4.18.2",
+    "express-rate-limit": "^7.0.0",
+    "puppeteer": "^23.0.0",
+    "redis": "^4.6.0"
   }
 }

@@ -43,14 +43,17 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
+# Copy backend files
+COPY backend/package.json backend/package-lock.json* ./
+
 # Skip Puppeteer's bundled Chromium download
 ENV PUPPETEER_SKIP_DOWNLOAD=true
 
-# Copy everything (respects .dockerignore)
-COPY . .
-
 # Install production dependencies only
 RUN npm ci --only=production 2>/dev/null || npm install --only=production
+
+# Copy rest of backend source
+COPY backend/ .
 
 # Ensure data directory exists
 RUN mkdir -p /app/data && chmod 755 /app/data
