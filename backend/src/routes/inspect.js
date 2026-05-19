@@ -107,6 +107,11 @@ router.post('/debug', async (req, res) => {
 
       try {
         await page.goto(url.trim(), { waitUntil: 'domcontentloaded', timeout: config.PAGE_LOAD_TIMEOUT_MS });
+        // Wait for Cloudflare challenge to pass (up to 10s)
+        await page.waitForFunction(
+          () => !document.title.includes('Just a moment') && !document.title.includes('Checking your browser'),
+          { timeout: 10000 }
+        ).catch(() => {});
       } catch (err) {
         console.log('[debug] Page load error (non-fatal):', err.message);
       }

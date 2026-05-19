@@ -115,6 +115,13 @@ async function extractLinks(browser, targetUrl) {
 
     try {
       await sourcePage.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: TIMEOUT });
+      // Wait for Cloudflare challenge to pass (up to 15s)
+      await sourcePage.waitForFunction(
+        () => !document.title.includes('Just a moment') && !document.title.includes('Checking your browser'),
+        { timeout: 15000 }
+      ).catch(() => {
+        console.log('[extractLinks] Cloudflare challenge may still be active');
+      });
     } catch (err) {
       if (!err.message?.includes('timeout') && !err.message?.includes('net::')) {
         console.error('[extractLinks] Source page error:', err.message);
