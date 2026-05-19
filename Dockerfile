@@ -50,7 +50,6 @@ COPY backend/package-lock.json /app/backend/package-lock.json
 COPY backend/config/ /app/backend/config/
 COPY backend/src/ /app/backend/src/
 COPY backend/public/ /app/backend/public/
-COPY backend/data/ /app/backend/data/
 
 # Install dependencies
 ENV PUPPETEER_SKIP_DOWNLOAD=true
