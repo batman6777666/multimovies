@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import './App.css'
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://localhost:3000'
+const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || ''
 
 interface PatternResults {
   rpm: string | null
