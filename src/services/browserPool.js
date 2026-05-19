@@ -21,7 +21,7 @@ let initializing = false;
 // ─── Internal helpers ────────────────────────────────────────────────────────
 
 async function spawnBrowser() {
-  return puppeteer.launch({
+  const launchOptions = {
     headless: 'new',
     args: [
       '--no-sandbox',
@@ -35,7 +35,14 @@ async function spawnBrowser() {
       '--disable-renderer-backgrounding',
       '--disable-backgrounding-occluded-windows',
     ],
-  });
+  };
+
+  // Use system Chromium in Docker environments
+  if (process.env.PUPPETEER_EXECUTABLE_PATH) {
+    launchOptions.executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
+  }
+
+  return puppeteer.launch(launchOptions);
 }
 
 async function acquireSlot() {

@@ -23,4 +23,7 @@ module.exports = {
   RATE_LIMIT_MAX: parseInt(process.env.RATE_LIMIT_MAX || '100', 10),
 
   NODE_ENV: process.env.NODE_ENV || 'development',
+
+  // Puppeteer executable path (for Docker environments)
+  PUPPETEER_EXECUTABLE_PATH: process.env.PUPPETEER_EXECUTABLE_PATH || null,
 };
