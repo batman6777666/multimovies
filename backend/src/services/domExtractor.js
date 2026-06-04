@@ -1,5 +1,5 @@
 const config = require('../../config/config');
-const { STREAM_PATTERNS, LINK_TEMPLATES } = require('../utils/constants');
+const { STREAM_PATTERNS, LINK_TEMPLATES, BLOCKED_URL_PATTERNS } = require('../utils/constants');
 
 const PAGE_TIMEOUT = 10000;
 
@@ -11,8 +11,17 @@ async function setupPage(browser) {
   await page.setCacheEnabled(false);
   await page.setRequestInterception(true);
   page.on('request', (req) => {
+    const url = req.url();
     const type = req.resourceType();
-    if (type === 'image' || type === 'font' || type === 'stylesheet' || type === 'media') {
+    
+    // Block common ads, analytics, and heavy media assets to save memory/CPU
+    const shouldBlock = BLOCKED_URL_PATTERNS.some(pat => url.includes(pat)) ||
+                        type === 'image' || 
+                        type === 'font' || 
+                        type === 'stylesheet' || 
+                        type === 'media';
+                        
+    if (shouldBlock) {
       req.abort().catch(() => {});
     } else {
       req.continue().catch(() => {});
@@ -158,10 +167,10 @@ async function extractLinks(browser, targetUrl) {
       }
     }
 
-    // If not found directly, load the embed URLs using Puppeteer to resolve dynamic iframes/requests
+    // If not found directly, load the embed URLs sequentially using Puppeteer to resolve dynamic iframes/requests
     if (!videoId) {
-      console.log(`[fast] Resolving ${result.embedUrls.length} embed URLs dynamically in parallel...`);
-      const pagePromises = result.embedUrls.map(async (embedUrl) => {
+      console.log(`[fast] Resolving ${result.embedUrls.length} embed URLs sequentially...`);
+      for (const embedUrl of result.embedUrls) {
         let embedPage = null;
         try {
           embedPage = await setupPage(browser);
@@ -192,47 +201,54 @@ async function extractLinks(browser, targetUrl) {
           });
 
           // Navigate to embed page (wait only for domcontentloaded for speed)
-          await embedPage.goto(embedUrl, { waitUntil: 'domcontentloaded', timeout: 8000 }).catch(() => {});
+          await embedPage.goto(embedUrl, { waitUntil: 'domcontentloaded', timeout: 5000 }).catch(() => {});
 
-          // Small sleep to let dynamic scripts run
+          // Small sleep to let dynamic scripts run (up to 1.5 seconds)
           for (let tick = 0; tick < 10; tick++) {
             if (localVideoId) break;
-            await new Promise(r => setTimeout(r, 200));
+            await new Promise(r => setTimeout(r, 150));
           }
 
-          if (localVideoId) return localVideoId;
+          if (!localVideoId) {
+            // Also check standard DOM iframes
+            const domIframes = await embedPage.evaluate(() => {
+              return Array.from(document.querySelectorAll('iframe'))
+                .map(f => f.src)
+                .filter(Boolean);
+            }).catch(() => []);
 
-          // Also check standard DOM iframes in case events missed it
-          const domIframes = await embedPage.evaluate(() => {
-            return Array.from(document.querySelectorAll('iframe'))
-              .map(f => f.src)
-              .filter(Boolean);
-          }).catch(() => []);
-
-          for (const src of domIframes) {
-            const matched = findVideoId(src);
-            if (matched) return matched;
+            for (const src of domIframes) {
+              const matched = findVideoId(src);
+              if (matched) {
+                localVideoId = matched;
+                break;
+              }
+            }
           }
 
-          // Also check DOM content
-          const content = await embedPage.content().catch(() => '');
-          const matchedFromContent = findVideoId(content);
-          if (matchedFromContent) return matchedFromContent;
+          if (!localVideoId) {
+            // Also check DOM content
+            const content = await embedPage.content().catch(() => '');
+            const matchedFromContent = findVideoId(content);
+            if (matchedFromContent) {
+              localVideoId = matchedFromContent;
+            }
+          }
 
-          return null;
+          if (localVideoId) {
+            videoId = localVideoId;
+            console.log(`[fast] Found video ID sequentially: ${videoId}`);
+            try { await embedPage.close(); } catch {}
+            break; // Found the ID, stop processing other URLs!
+          }
         } catch (err) {
-          console.log(`[fast] Error loading embed ${embedUrl}: ${err.message}`);
-          return null;
+          console.log(`[fast] Error loading embed ${embedUrl} sequentially: ${err.message}`);
         } finally {
           if (embedPage) {
             try { await embedPage.close(); } catch {}
           }
         }
-      });
-
-      // Wait for all pages to resolve
-      const resolvedIds = await Promise.all(pagePromises);
-      videoId = resolvedIds.find(Boolean) || null;
+      }
     }
 
     if (videoId) {
