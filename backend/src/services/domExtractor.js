@@ -1,229 +1,259 @@
 const config = require('../../config/config');
+const { STREAM_PATTERNS, LINK_TEMPLATES } = require('../utils/constants');
 
-const PAGE_TIMEOUT = 5000;
-const TOTAL_TIMEOUT = 15000;
+const PAGE_TIMEOUT = 10000;
 
-const RPM_RE = /https?:\/\/multimovies\.rpmhub\.site\/[#?]?[a-zA-Z0-9_-]+/;
-const P2P_RE = /https?:\/\/multimovies\.p2pplay\.pro\/[#?]?[a-zA-Z0-9_-]+/;
-const UNS_RE = /https?:\/\/server1\.uns\.bio\/[#?]?[a-zA-Z0-9_-]+/;
-
-const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
-
-function scanHtml(html) {
-  return {
-    rpm: (html.match(RPM_RE) || [null])[0],
-    p2p: (html.match(P2P_RE) || [null])[0],
-    upn: (html.match(UNS_RE) || [null])[0],
-  };
-}
-
-function mergeFound(merged, scan) {
-  if (!merged.rpm && scan.rpm) merged.rpm = scan.rpm;
-  if (!merged.p2p && scan.p2p) merged.p2p = scan.p2p;
-  if (!merged.upn && scan.upn) merged.upn = scan.upn;
-  return !!(merged.rpm && merged.p2p && merged.upn);
-}
-
-/**
- * Fetch with retry + cookie persistence for Cloudflare bypass.
- */
-async function httpFetch(url, options = {}, retries = 2) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), PAGE_TIMEOUT);
-
-  const opts = {
-    ...options,
-    headers: {
-      'User-Agent': UA,
-      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-      'Accept-Language': 'en-US,en;q=0.5',
-      ...options.headers,
-    },
-    signal: controller.signal,
-  };
-
-  try {
-    const res = await fetch(url, opts);
-    clearTimeout(timeout);
-    return res;
-  } catch (err) {
-    clearTimeout(timeout);
-    if (retries > 0 && (err.name === 'AbortError' || err.code === 'ECONNRESET')) {
-      return httpFetch(url, options, retries - 1);
+async function setupPage(browser) {
+  const page = await browser.newPage();
+  await page.setUserAgent(
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+  );
+  await page.setCacheEnabled(false);
+  await page.setRequestInterception(true);
+  page.on('request', (req) => {
+    const type = req.resourceType();
+    if (type === 'image' || type === 'font' || type === 'stylesheet' || type === 'media') {
+      req.abort().catch(() => {});
+    } else {
+      req.continue().catch(() => {});
     }
-    throw err;
-  }
-}
-
-/**
- * STEP 1: Fetch source page and extract player options from HTML.
- */
-async function fetchSourcePage(targetUrl) {
-  const res = await httpFetch(targetUrl);
-  const html = await res.text();
-
-  // Extract player options via regex
-  const liPattern = /<li[^>]*data-post="([^"]*)"[^>]*data-nume="([^"]*)"[^>]*data-type="([^"]*)"[^>]*>/gi;
-  const options = [];
-  let match;
-  while ((match = liPattern.exec(html)) !== null) {
-    options.push({ post: match[1], nume: match[2], type: match[3] });
-  }
-
-  console.log(`[fast] source → ${options.length} player options`);
-  return { options, html };
-}
-
-/**
- * STEP 2: Fetch embed URL via WordPress AJAX.
- */
-async function fetchEmbedUrl(targetUrl, option) {
-  const baseUrl = targetUrl.replace(/\/[^/]*$/, '');
-  const ajaxUrl = `${baseUrl}/wp-admin/admin-ajax.php`;
-
-  const body = new URLSearchParams({
-    action: 'doo_player_ajax',
-    post: option.post,
-    nume: option.nume,
-    type: option.type,
-  }).toString();
-
-  const res = await httpFetch(ajaxUrl, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
-      'Referer': targetUrl,
-      'Origin': new URL(targetUrl).origin,
-    },
-    body,
   });
-
-  const text = await res.text();
-  try {
-    const data = JSON.parse(text);
-    const url = data.embed_url || data.src || data.url || data.player_url || null;
-    return url && !url.includes('youtube') && !url.includes('youtu.be') ? url : null;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * STEP 3: Fetch embed page and scan for stream links.
- */
-async function scanEmbedPage(embedUrl) {
-  const res = await httpFetch(embedUrl, {
-    redirect: 'follow',
+  await page.evaluateOnNewDocument(() => {
+    Object.defineProperty(navigator, 'webdriver', { get: () => false });
+    window.chrome = { runtime: {} };
   });
-  const html = await res.text();
-  const scan = scanHtml(html);
-  console.log(`[fast] embed → rpm:${!!scan.rpm} p2p:${!!scan.p2p} upn:${!!scan.upn}`);
-
-  // Also scan iframes in the HTML
-  const iframePattern = /src="(https?:\/\/[^"]+)"/gi;
-  let iframeMatch;
-  while ((iframeMatch = iframePattern.exec(html)) !== null) {
-    const iframeUrl = iframeMatch[1];
-    if (iframeUrl.includes('youtube') || iframeUrl.includes('youtu.be')) continue;
-    try {
-      const innerRes = await httpFetch(iframeUrl, { redirect: 'follow' });
-      const innerHtml = await innerRes.text();
-      const innerScan = scanHtml(innerHtml);
-      mergeFound(scan, innerScan);
-    } catch {
-      // Skip failed iframe fetches
-    }
-  }
-
-  return scan;
+  return page;
 }
 
-/**
- * BLAZING FAST extraction — zero browser, pure HTTP.
- * Works on 512MB RAM. Completes in <10 seconds.
- */
 async function extractLinks(browser, targetUrl) {
   const t0 = Date.now();
   console.log(`[fast] START: ${targetUrl}`);
 
-  const merged = { rpm: null, p2p: null, upn: null };
+  let page = null;
 
   try {
-    // Hard total timeout
-    const totalTimer = setTimeout(() => {
-      throw new Error('EXTRACTION_TIMEOUT');
-    }, TOTAL_TIMEOUT);
-
-    // STEP 1: Fetch source page
-    const { options, html: sourceHtml } = await fetchSourcePage(targetUrl);
-
-    // Quick scan of source HTML for direct links
-    const sourceScan = scanHtml(sourceHtml);
-    mergeFound(merged, sourceScan);
-
-    if (options.length === 0) {
-      clearTimeout(totalTimer);
-      if (merged.rpm || merged.p2p || merged.upn) {
-        const videoId = (merged.rpm || merged.p2p || merged.upn).match(/[#\/]([a-zA-Z0-9_-]+)$/)?.[1] || 'unknown';
-        console.log(`[fast] DONE in ${Date.now() - t0}ms (source scan)`);
-        return { success: true, rpm: merged.rpm, p2p: merged.p2p, upn: merged.upn, videoId };
-      }
-      return { success: false, code: 'LINKS_NOT_FOUND', error: 'No player options found' };
+    if (!browser) {
+      return { success: false, code: 'INTERNAL_ERROR', error: 'Browser required' };
     }
 
-    // STEP 2: Fetch ALL embed URLs in PARALLEL
-    const embedResults = await Promise.allSettled(
-      options.map(opt => fetchEmbedUrl(targetUrl, opt))
-    );
+    page = await setupPage(browser);
 
-    const embedUrls = embedResults
-      .filter(r => r.status === 'fulfilled' && r.value)
-      .map(r => r.value);
+    // Load source page with browser to bypass Cloudflare
+    console.log('[fast] Loading source page...');
+    try {
+      await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: PAGE_TIMEOUT });
+    } catch (err) {
+      console.log(`[fast] Page load note: ${err.message}`);
+    }
 
-    console.log(`[fast] ${embedUrls.length} embed URLs:`, embedUrls);
+    // Wait for Cloudflare to solve - poll for up to 20 seconds
+    let cfSolved = false;
+    for (let i = 0; i < 40; i++) {
+      const title = await page.title();
+      if (!title.includes('Just a moment') && !title.includes('Checking')) {
+        cfSolved = true;
+        console.log(`[cf] Solved in ${(i + 1) * 500}ms`);
+        break;
+      }
+      await new Promise(r => setTimeout(r, 500));
+    }
 
-    if (embedUrls.length === 0) {
-      clearTimeout(totalTimer);
+    if (!cfSolved) {
+      console.log('[cf] Not solved after 20s, trying anyway...');
+    }
+
+    // Wait for player options
+    await page.waitForSelector('#playeroptionsul li[data-post]', { timeout: 5000 }).catch(() => {});
+
+    // Get player options and make AJAX calls
+    const result = await page.evaluate(async () => {
+      const options = Array.from(document.querySelectorAll('#playeroptionsul li[data-post][data-nume][data-type]'))
+        .map(el => ({ post: el.dataset.post, nume: el.dataset.nume, type: el.dataset.type }));
+
+      const debug = [];
+      const embedUrls = [];
+
+      for (const opt of options) {
+        try {
+          const body = new URLSearchParams({
+            action: 'doo_player_ajax',
+            post: opt.post,
+            nume: opt.nume,
+            type: opt.type,
+          }).toString();
+
+          const res = await fetch('/wp-admin/admin-ajax.php', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body,
+          });
+          const text = await res.text();
+          debug.push({ opt, status: res.status, response: text.substring(0, 300) });
+
+          try {
+            const data = JSON.parse(text);
+            const url = data.embed_url || data.src || data.url || data.player_url || null;
+            if (url && !url.includes('youtube') && !url.includes('youtu.be')) {
+              embedUrls.push(url);
+            }
+          } catch (parseErr) {
+            debug[debug.length - 1].parseError = parseErr.message;
+          }
+        } catch (err) {
+          debug.push({ opt, error: err.message });
+        }
+      }
+
+      return { options: options.length, embedUrls, debug };
+    });
+
+    console.log(`[fast] ${result.options} options, ${result.embedUrls.length} embed URLs`);
+    result.debug.forEach((d, i) => {
+      if (d.error) {
+        console.log(`[ajax][${i}] ERROR: ${d.error}`);
+      } else {
+        console.log(`[ajax][${i}] status=${d.status} opt=${JSON.stringify(d.opt)} body=${d.response}`);
+        if (d.parseError) console.log(`[ajax][${i}] parseError: ${d.parseError}`);
+      }
+    });
+
+    // Helper to find a video ID in any string
+    const findVideoId = (text) => {
+      if (!text) return null;
+      for (const [patternName, pattern] of Object.entries(STREAM_PATTERNS)) {
+        const match = text.match(pattern);
+        if (match && match[1]) {
+          console.log(`[extract] Matched pattern "${patternName}": ${match[0]} -> ID: ${match[1]}`);
+          return match[1];
+        }
+      }
+      return null;
+    };
+
+    let videoId = null;
+
+    if (result.embedUrls.length === 0) {
+      // Check source HTML for direct links
+      const html = await page.content();
+      videoId = findVideoId(html);
+      if (videoId) {
+        console.log(`[fast] DONE in ${Date.now() - t0}ms (source scan)`);
+        return {
+          success: true,
+          rpm: LINK_TEMPLATES.rpm(videoId),
+          p2p: LINK_TEMPLATES.p2p(videoId),
+          upn: LINK_TEMPLATES.upn(videoId),
+          videoId
+        };
+      }
       return { success: false, code: 'LINKS_NOT_FOUND', error: 'No embed URLs found' };
     }
 
-    // STEP 3: Scan ALL embed pages in PARALLEL
-    const scanResults = await Promise.allSettled(
-      embedUrls.map(url => scanEmbedPage(url))
-    );
-
-    for (const result of scanResults) {
-      if (result.status === 'fulfilled' && result.value) {
-        mergeFound(merged, result.value);
+    // First check if any of the embed URLs themselves contain the video ID
+    for (const url of result.embedUrls) {
+      videoId = findVideoId(url);
+      if (videoId) {
+        console.log(`[fast] Video ID found directly in embed URL: ${url}`);
+        break;
       }
     }
 
-    clearTimeout(totalTimer);
+    // If not found directly, load the embed URLs using Puppeteer to resolve dynamic iframes/requests
+    if (!videoId) {
+      console.log(`[fast] Resolving ${result.embedUrls.length} embed URLs dynamically in parallel...`);
+      const pagePromises = result.embedUrls.map(async (embedUrl) => {
+        let embedPage = null;
+        try {
+          embedPage = await setupPage(browser);
+          let localVideoId = null;
 
-    // STEP 4: Return results
-    const firstUrl = merged.rpm || merged.p2p || merged.upn;
-    const videoId = firstUrl ? (firstUrl.match(/[#\/]([a-zA-Z0-9_-]+)$/)?.[1] || 'unknown') : null;
+          // Listen to frame navigation and attached frames
+          embedPage.on('frameattached', (frame) => {
+            const url = frame.url();
+            if (url && url !== 'about:blank') {
+              const matched = findVideoId(url);
+              if (matched) localVideoId = matched;
+            }
+          });
+
+          embedPage.on('framenavigated', (frame) => {
+            const url = frame.url();
+            if (url && url !== 'about:blank') {
+              const matched = findVideoId(url);
+              if (matched) localVideoId = matched;
+            }
+          });
+
+          // Listen to request URLs
+          embedPage.on('request', (req) => {
+            const url = req.url();
+            const matched = findVideoId(url);
+            if (matched) localVideoId = matched;
+          });
+
+          // Navigate to embed page (wait only for domcontentloaded for speed)
+          await embedPage.goto(embedUrl, { waitUntil: 'domcontentloaded', timeout: 8000 }).catch(() => {});
+
+          // Small sleep to let dynamic scripts run
+          for (let tick = 0; tick < 10; tick++) {
+            if (localVideoId) break;
+            await new Promise(r => setTimeout(r, 200));
+          }
+
+          if (localVideoId) return localVideoId;
+
+          // Also check standard DOM iframes in case events missed it
+          const domIframes = await embedPage.evaluate(() => {
+            return Array.from(document.querySelectorAll('iframe'))
+              .map(f => f.src)
+              .filter(Boolean);
+          }).catch(() => []);
+
+          for (const src of domIframes) {
+            const matched = findVideoId(src);
+            if (matched) return matched;
+          }
+
+          // Also check DOM content
+          const content = await embedPage.content().catch(() => '');
+          const matchedFromContent = findVideoId(content);
+          if (matchedFromContent) return matchedFromContent;
+
+          return null;
+        } catch (err) {
+          console.log(`[fast] Error loading embed ${embedUrl}: ${err.message}`);
+          return null;
+        } finally {
+          if (embedPage) {
+            try { await embedPage.close(); } catch {}
+          }
+        }
+      });
+
+      // Wait for all pages to resolve
+      const resolvedIds = await Promise.all(pagePromises);
+      videoId = resolvedIds.find(Boolean) || null;
+    }
 
     if (videoId) {
+      const rpm = LINK_TEMPLATES.rpm(videoId);
+      const p2p = LINK_TEMPLATES.p2p(videoId);
+      const upn = LINK_TEMPLATES.upn(videoId);
+
       console.log(`[fast] SUCCESS in ${Date.now() - t0}ms`);
-      console.log(`  rpm: ${merged.rpm || '(not found)'}`);
-      console.log(`  p2p: ${merged.p2p || '(not found)'}`);
-      console.log(`  upn: ${merged.upn || '(not found)'}`);
-      return { success: true, rpm: merged.rpm, p2p: merged.p2p, upn: merged.upn, videoId };
+      console.log(`  rpm: ${rpm}`);
+      console.log(`  p2p: ${p2p}`);
+      console.log(`  upn: ${upn}`);
+      return { success: true, rpm, p2p, upn, videoId };
     }
 
     console.log(`[fast] No links found after ${Date.now() - t0}ms`);
-    return {
-      success: false,
-      code: 'LINKS_NOT_FOUND',
-      error: 'No embed links found (rpm/p2p/upn missing)',
-    };
+    return { success: false, code: 'LINKS_NOT_FOUND', error: 'No embed links found' };
   } catch (err) {
-    if (err.message === 'EXTRACTION_TIMEOUT') {
-      return { success: false, code: 'TIMEOUT', error: 'Request timed out' };
-    }
     console.error(`[fast] ERROR: ${err.message}`);
     return { success: false, code: 'INTERNAL_ERROR', error: err.message };
+  } finally {
+    if (page) { try { await page.close(); } catch {} }
   }
 }
 
